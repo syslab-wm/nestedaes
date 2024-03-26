@@ -30,6 +30,15 @@ func NewCTR(key []byte, iv []byte) cipher.Stream {
 	return cipher.NewCTR(block, iv)
 }
 
+func CTREncrypt(data, key, iv []byte) {
+    aesctr := NewCTR(key, iv)
+    aesctr.XORKeyStream(data, data)
+}
+
+func CTRDecrypt(data, key, iv []byte) {
+    CTREncrypt(data, key, iv)
+}
+
 func GenZeroNonce() []byte {
 	return make([]byte, NonceSize)
 }
@@ -46,6 +55,16 @@ func NewGCM(key []byte) cipher.AEAD {
 	}
 
 	return aesgcm
+}
+
+func GCMEncrypt(data, key, nonce, additionalData []byte) []byte {
+	aesgcm := NewGCM(key)
+    return aesgcm.Seal(data[:0], nonce, data, additionalData)
+}
+
+func GCMDecrypt(data, key, nonce, additionalData []byte) ([]byte, error) {
+    aesgcm := NewGCM(key)
+    return aesgcm.Open(data[:0], nonce, data, additionalData)
 }
 
 // SplitCiphertextTag takes as input an AES-GCM encrypted ciphertext

@@ -154,15 +154,13 @@ func (h *Header) Marshal(kek []byte) ([]byte, error) {
     iv := aesx.NewIV(h.BaseIV[:])
     for i := 1; i < numEntries; i++ {
         curKEK := h.Entries[i].KEK
-        aesctr := aesx.NewCTR(curKEK[:], iv[:])
-        aesctr.XORKeyStream(enc[:eidx], enc[:eidx])
+        aesx.CTREncrypt(enc[:eidx], curKEK[:], iv[:])
         eidx += EntrySize
         iv.Inc()
     }
 
     // encrypt with last KEK
-    aesctr := aesx.NewCTR(kek, iv[:])
-    aesctr.XORKeyStream(enc[:eidx], enc[:eidx])
+    aesx.CTREncrypt(enc[:eidx], kek, iv[:])
 
     // write the plain portion of the header and concatenate the encryption
     // portion
@@ -217,8 +215,7 @@ func Unmarshal(data []byte, kek []byte) (*Header, error) {
     eidx := len(enc)
 
     for eidx != len(h.Tag) {
-        aesctr := aesx.NewCTR(curKEK, iv[:])
-        aesctr.XORKeyStream(enc[:eidx], enc[:eidx])
+        aesx.CTRDecrypt(enc[:eidx], curKEK, iv[:])
 
         entryStart := eidx - EntrySize
         entry, err := UnmarshalEntry(enc[entryStart:entryStart + 2*aesx.KeySize])

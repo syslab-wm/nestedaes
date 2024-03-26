@@ -43,9 +43,8 @@ func SplitHeaderPayload(blob []byte) ([]byte, []byte, error) {
 func Encrypt(plaintext, kek, iv []byte) ([]byte, error) {
     // encrypt the plaintext
 	dek := aesx.GenRandomKey()
-	aesgcm := aesx.NewGCM(dek)
 	nonce := aesx.GenZeroNonce()
-	payload := aesgcm.Seal(plaintext[:0], nonce, plaintext, nil)
+    payload := aesx.GCMEncrypt(plaintext, dek, nonce, nil)
 
 	// separate the ciphertext from the AEAD tag
     payload, tag, err := aesx.SplitCiphertextTag(payload)
@@ -74,7 +73,7 @@ func Encrypt(plaintext, kek, iv []byte) ([]byte, error) {
 
 
 // output: new blob, new kek, error
-// TODO: does Rencrypt moidfy the blob and kek inputs?
+// TODO: does Rencrypt modify the blob and kek inputs?
 func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
     hData, payload, err := SplitHeaderPayload(blob)
     if err != nil {
@@ -95,8 +94,7 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
     iv := aesx.NewIV(h.BaseIV[:])
     iv.Add(len(h.Entries) - 1)
 
-    aesctr := aesx.NewCTR(dek, iv[:])
-    aesctr.XORKeyStream(payload, payload)
+    aesx.CTREncrypt(payload, dek, iv[:])
 
     w := new(bytes.Buffer)
     hData, err = h.Marshal(newKEK)
@@ -127,17 +125,15 @@ func Decrypt(blob, kek []byte) ([]byte, error) {
     i := len(h.Entries) - 1
     for i > 0 {
         dek := h.Entries[i].DEK
-        aesctr := aesx.NewCTR(dek[:], iv[:])
-        aesctr.XORKeyStream(payload, payload)
+        aesx.CTRDecrypt(payload, dek[:], iv[:])
         iv.Dec()
         i--
     }
 
     dek := h.Entries[i].DEK
-    aesgcm := aesx.NewGCM(dek[:])
 	nonce := aesx.GenZeroNonce()
     payload = append(payload, h.Tag[:]...)
-	plaintext, err := aesgcm.Open(payload[:0], nonce, payload, nil)
+    plaintext, err := aesx.GCMDecrypt(payload, dek[:], nonce, nil)
     if err != nil {
         return nil, err
     }
