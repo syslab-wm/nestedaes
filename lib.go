@@ -39,6 +39,7 @@ func SplitHeaderPayload(blob []byte) ([]byte, []byte, error) {
 // the input Key Encryption Key (KEK) to encrypt the DEK in the Blob's header.
 // The iv is the BaseIV.  The caller should randomly generate it; each
 // subsequent layer of encryption uses a different IV derived from the BaseIV.
+// TODO: does Encrypt modify the plaintext input?
 func Encrypt(plaintext, kek, iv []byte) ([]byte, error) {
     // encrypt the plaintext
 	dek := aesx.GenRandomKey()
@@ -73,6 +74,7 @@ func Encrypt(plaintext, kek, iv []byte) ([]byte, error) {
 
 
 // output: new blob, new kek, error
+// TODO: does Rencrypt moidfy the blob and kek inputs?
 func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
     hData, payload, err := SplitHeaderPayload(blob)
     if err != nil {
@@ -108,6 +110,7 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
 }
 
 // decrypted payload, and error
+// TODO: does Decrypt modify the blob and kek inputs?
 func Decrypt(blob, kek []byte) ([]byte, error) {
     hData, payload, err := SplitHeaderPayload(blob)
     if err != nil {

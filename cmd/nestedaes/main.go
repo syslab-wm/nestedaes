@@ -19,8 +19,8 @@ positional arguments:
     The file to encrypt, re-encrypt, or decrypt
     
 options:
-  -op OPERATINON
-    The optation must be either "encrypt", "reencrypt" or "decrypt"
+  -op OPERATION
+    OPERATION must either "encrypt", "reencrypt" or "decrypt"
 
     Default: encrypt
 
