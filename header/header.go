@@ -51,19 +51,24 @@ func (e *Entry) Marshal() []byte {
 }
 
 func UnmarshalEntry(data []byte) (*Entry, error) {
+    if len(data) < EntrySize {
+        return nil, fmt.Errorf("failed to unmarshal header.Entry: expected %d bytes, got %d", EntrySize, len(data))
+    }
+
     e := &Entry{}
     r := bytes.NewReader(data)
-
-    // TODO check return values
-    r.Read(e.KEK[:])
-    r.Read(e.DEK[:])
-
+    _, err := r.Read(e.KEK[:])
+    if err != nil {
+        return nil, err
+    }
+    _, err = r.Read(e.DEK[:])
+    if err != nil {
+        return nil, err
+    }
     return e, nil
 }
 
 type PlainHeader struct {
-    // cleartext
-    // Size -- only present on disk, a uint32be
     Size uint32
     BaseIV [aesx.IVSize]byte
 }
@@ -78,6 +83,7 @@ type Header struct {
     EncryptedHeader
 }
 
+// String satisfies the [fmt.Stringer] interface. 
 func (h *Header) String() string {
     var b strings.Builder
 
@@ -85,7 +91,7 @@ func (h *Header) String() string {
     fmt.Fprintf(&b, "\tsize: %d,\n", h.Size)
     fmt.Fprintf(&b, "\tBaseIV: %x,\n", h.BaseIV)
     fmt.Fprintf(&b, "\tTag: %x,\n", h.Tag)
-    fmt.Fprintf(&b, "\tEntries: [\n", h.Tag)
+    fmt.Fprintf(&b, "\tEntries: %x\n", h.Tag)
     for i := 0; i < len(h.Entries); i++ {
         fmt.Fprintf(&b, "\t\t%d: %v,\n", i, h.Entries[i])
     }
@@ -95,15 +101,19 @@ func (h *Header) String() string {
     return b.String()    
 }
 
+// New creates a new [Header] and initializes the BaseIV and Tag.  Note that
+// the returned header does not have any entries, and the caller is responsible
+// for invoking the [AddEntry] method.
+// TODO: should this return an error instead of panic on bad iv/tag lengths?
 func New(iv []byte, tag []byte) *Header {
     h := &Header{}
 	if len(iv) != len(h.BaseIV) {
-		mu.Panicf("bad IV size: expected, got %d", len(h.BaseIV), len(iv))
+		mu.Panicf("bad IV size: expected %d, got %d", len(h.BaseIV), len(iv))
 	}
     copy(h.BaseIV[:], iv)
 
 	if len(tag) != len(h.Tag) {
-		mu.Panicf("bad Tag size: expected, got %d", len(h.Tag), len(tag))
+		mu.Panicf("bad Tag size: expected %d, got %d", len(h.Tag), len(tag))
 	}
 	copy(h.Tag[:], tag)
 
@@ -111,29 +121,33 @@ func New(iv []byte, tag []byte) *Header {
     return h
 }
 
+// AddEntry addes a new key entry to the header.
 func (h *Header) AddEntry(e *Entry) {
     h.Size += EntrySize
     h.Entries = append(h.Entries, *e)
 }
 
-func (h *Header) Marshal(kek []byte) []byte {
-    ct := new(bytes.Buffer)
-
-    // TODO: check len(kek)? 
-
-    if len(h.Entries) == 0 {
-        mu.Panicf("marshal header tag field: header has zero entries")
+// Marshal marshals the header to a []byte.  As part of marshaling, this method
+// takes care of encrypting the "encrypted" portion of the header.
+func (h *Header) Marshal(kek []byte) ([]byte, error) {
+    if len(kek) != aesx.KeySize {
+        return nil, fmt.Errorf("header.Marshal failed: expected KEK size of %d, but got %d", aesx.KeySize, kek)
     }
 
-    // write the plaintext data for what will be the "payload"
-    // (the encrypted part of the header)
+    if len(h.Entries) == 0 {
+        return nil, fmt.Errorf("header.Marshal failed: header has zero entries")
+    }
+
+    // write the plaintext data for what will become the encrypted part of the
+    // header
+    ct := new(bytes.Buffer)
     ct.Write(h.Tag[:])
     for _, e := range h.Entries {
         ct.Write(e.Marshal())
     }
 
     // encrypt it
-    payload := ct.Bytes()
+    enc := ct.Bytes()
     eidx := len(h.Tag) + EntrySize
     numEntries := len(h.Entries)
 
@@ -141,73 +155,85 @@ func (h *Header) Marshal(kek []byte) []byte {
     for i := 1; i < numEntries; i++ {
         curKEK := h.Entries[i].KEK
         aesctr := aesx.NewCTR(curKEK[:], iv[:])
-        aesctr.XORKeyStream(payload[:eidx], payload[:eidx])
-        eidx = eidx + EntrySize
+        aesctr.XORKeyStream(enc[:eidx], enc[:eidx])
+        eidx += EntrySize
         iv.Inc()
     }
 
     // encrypt with last KEK
     aesctr := aesx.NewCTR(kek, iv[:])
-    aesctr.XORKeyStream(payload[:eidx], payload[:eidx])
+    aesctr.XORKeyStream(enc[:eidx], enc[:eidx])
 
+    // write the plain portion of the header and concatenate the encryption
+    // portion
     b := new(bytes.Buffer)
     binary.Write(b, binary.BigEndian, h.Size)
     b.Write(h.BaseIV[:])
-    b.Write(payload)
+    b.Write(enc)
 
-    return b.Bytes()
+    return b.Bytes(), nil
 }
 
+// Unmarshal takes a marshalled version of the header and the current Key
+// Encryption Key (KEK) and deserializes and decrypts the header.
 func Unmarshal(data []byte, kek []byte) (*Header, error) {
+    if len(kek) != aesx.KeySize {
+        return nil, fmt.Errorf("header.Unmarshal failed: expected KEK size of %d, but got %d", aesx.KeySize, kek)
+    }
+
     h := &Header{}
     r := bytes.NewReader(data)
 
     err := binary.Read(r, binary.BigEndian, &h.Size)
     if err != nil {
-        return nil, fmt.Errorf("can't unmarshal header: %w", err)
+        return nil, fmt.Errorf("failed to unmarshal header: can't read Size field: %w", err)
     }
 
     if h.Size != uint32(len(data)) {
-        return nil, fmt.Errorf("can't unmarshal header: header size field is %d but input data is %d bytes", h.Size, len(data))
+        return nil, fmt.Errorf("failed to unmarshal header: header size field is %d but marshalled data is %d bytes", h.Size, len(data))
     }
 
-    _, err = r.Read(h.BaseIV[:])
+    n, err := r.Read(h.BaseIV[:])
     if err != nil {
-        fmt.Errorf("can't unmarshal header: %w", err)
+        return nil, fmt.Errorf("failed to unmarshal header: can't read BaseIV: %w", err)
+    }
+    if n != len(h.BaseIV) {
+        return nil, fmt.Errorf("failed to unmarshal header: can't read BaseIV")
     }
 
-    payload := data[int(r.Size())-r.Len():]
-    mod := (len(payload) - len(h.Tag)) % EntrySize
+    enc := data[int(r.Size())-r.Len():]
+    mod := (len(enc) - len(h.Tag)) % EntrySize
     if mod != 0 {
-        fmt.Errorf("can't unmarshal header: header has a partial entry")
+        return nil, fmt.Errorf("failed to unmarshal header: header has a partial entry")
     }
-    numEntries := (len(payload) - len(h.Tag)) / EntrySize
+    numEntries := (len(enc) - len(h.Tag)) / EntrySize
     if numEntries <= 0 {
-        fmt.Errorf("can't unmarshal header: header has 0 entries")
+        return nil, fmt.Errorf("failed to unmarshal header: header has 0 entries")
     }
 
-    eidx := len(payload) 
     curKEK := kek
     iv := aesx.NewIV(h.BaseIV[:])
     iv.Add(numEntries - 1) // fast-forward to largest IV
+    eidx := len(enc)
 
     for eidx != len(h.Tag) {
         aesctr := aesx.NewCTR(curKEK, iv[:])
-        aesctr.XORKeyStream(payload[:eidx], payload[:eidx])
+        aesctr.XORKeyStream(enc[:eidx], enc[:eidx])
 
         entryStart := eidx - EntrySize
-        kek := payload[entryStart:entryStart+aesx.KeySize]
-        dek := payload[entryStart+aesx.KeySize:entryStart+(2*aesx.KeySize)]
-        entry := NewEntry(kek, dek)
+        entry, err := UnmarshalEntry(enc[entryStart:entryStart + 2*aesx.KeySize])
+        if err != nil {
+            return nil, err
+        }
         h.Entries = slices.Insert(h.Entries, 0, *entry)
 
         eidx = entryStart
-        curKEK = kek
+        curKEK = entry.KEK[:]
         iv.Dec()
     }
 
 
-    copy(h.Tag[:], payload[:len(h.Tag)])
+    copy(h.Tag[:], enc[:len(h.Tag)])
 
     return h, nil
 }

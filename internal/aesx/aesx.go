@@ -48,6 +48,9 @@ func NewGCM(key []byte) cipher.AEAD {
 	return aesgcm
 }
 
+// SplitCiphertextTag takes as input an AES-GCM encrypted ciphertext
+// and returns the two components of the ciphertext: the ciphertext proper, and
+// the authentication tag (which is conventionally appended to the ciphertext).
 func SplitCiphertextTag(ciphertext []byte) ([]byte, []byte, error) {
     if len(ciphertext) <= TagSize {
         return nil, nil, fmt.Errorf("ciphertext (%d bytes) <= AES GCM tag size (%d)", len(ciphertext), TagSize)

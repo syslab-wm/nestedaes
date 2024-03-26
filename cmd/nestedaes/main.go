@@ -43,6 +43,9 @@ options:
 
     Default: kek.key
 
+  -h|-help
+    Display this usage statement and exit.
+
 examples:
   $ nestedaes -encrypt -outkek kek.key foo.txt
   $ nestedaes -reencrypt -inkek kek.key -outkek key.key foo.txt
@@ -72,6 +75,8 @@ func parseOptions() *Options {
 	flag.StringVar(&opts.inKEK, "inkek", "kek.key", "")
 	flag.StringVar(&opts.outKEK, "outkek", "kek.key", "")
 
+    flag.Parse()
+
 	if flag.NArg() != 1 {
 		mu.Fatalf("expected one positional argument but got %d", flag.NArg())
 	}
@@ -94,8 +99,12 @@ func doEncrypt(inFile, outFile, outKEK string) {
 		mu.Fatalf("encrypt failed: can't read input file: %v", err)
     }
 
+	kek := aesx.GenRandomKey()
     iv := aesx.GenRandomIV()
-    blob, kek := nestedaes.Encrypt(plaintext, iv[:])
+    blob, err := nestedaes.Encrypt(plaintext, kek, iv[:])
+    if err != nil {
+		mu.Fatalf("encrypt failed: %v", err)
+    }
 
     err = os.WriteFile(outFile, blob, 0660)
     if err != nil {
