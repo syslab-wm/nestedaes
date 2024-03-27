@@ -1,4 +1,4 @@
-package header
+package nestedaes
 
 import (
     "bytes"
@@ -42,9 +42,9 @@ func TestHeader(t *testing.T) {
 
     iv := []byte("abcdefghijklmnop")
     tag := []byte("qrstuvwxyzABCDEF")
-    h := New(iv, tag)
+    h := NewHeader(iv, tag)
     for _, tup := range keyTuples {
-        e := NewEntry(tup.KEK, tup.DEK)
+        e := NewHeaderEntry(tup.KEK, tup.DEK)
         h.AddEntry(e)
     }
 
@@ -62,7 +62,7 @@ func TestHeader(t *testing.T) {
         t.Fatalf("expected marshalled header to have size of %d bytes, got %d", h.Size, len(hData))
     }
 
-    h2, err := Unmarshal(hData, kek)
+    h2, err := UnmarshalHeader(hData, kek)
     if err != nil {
         t.Fatalf("h.Unmarshal failed: %v", err)
     }

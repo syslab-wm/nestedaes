@@ -16,7 +16,6 @@ import (
     "fmt"
 
 	"github.com/syslab-wm/mu"
-	"github.com/syslab-wm/nestedaes/header"
 	"github.com/syslab-wm/nestedaes/internal/aesx"
 )
 
@@ -53,8 +52,8 @@ func Encrypt(plaintext, kek, iv []byte) ([]byte, error) {
     }
 
 	// create the ciphertext header
-    h := header.New(iv, tag)
-    entry := &header.Entry{}
+    h := NewHeader(iv, tag)
+    entry := &HeaderEntry{}
     entry.SetDEK(dek)   // note that first entry only has a dek, and not a kek
     h.AddEntry(entry)
 
@@ -80,7 +79,7 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
         return nil, nil, err
     }
 
-    h, err := header.Unmarshal(hData, kek)
+    h, err := UnmarshalHeader(hData, kek)
     if err != nil {
         return nil, nil, err
     }
@@ -88,7 +87,7 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
     newKEK := aesx.GenRandomKey()
     dek := aesx.GenRandomKey()
 
-    e := header.NewEntry(kek, dek)
+    e := NewHeaderEntry(kek, dek)
     h.AddEntry(e)
 
     iv := aesx.NewIV(h.BaseIV[:])
@@ -115,7 +114,7 @@ func Decrypt(blob, kek []byte) ([]byte, error) {
         return nil, err
     }
 
-    h, err := header.Unmarshal(hData, kek)
+    h, err := UnmarshalHeader(hData, kek)
     if err != nil {
         return nil, err
     }

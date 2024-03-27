@@ -1,4 +1,4 @@
-package header
+package nestedaes
 
 import (
     "bytes"
@@ -11,51 +11,51 @@ import (
 	"github.com/syslab-wm/nestedaes/internal/aesx"
 )
 
-const EntrySize = aesx.KeySize * 2
+const HeaderEntrySize = aesx.KeySize * 2
 
-func NewEntry(kek, dek []byte) *Entry {
-	e := &Entry{}
+type HeaderEntry struct {
+	KEK [aesx.KeySize]byte
+	DEK [aesx.KeySize]byte
+}
+
+func NewHeaderEntry(kek, dek []byte) *HeaderEntry {
+	e := &HeaderEntry{}
 	e.SetKEK(kek)
 	e.SetDEK(dek)
 	return e
 }
 
-type Entry struct {
-	KEK [aesx.KeySize]byte
-	DEK [aesx.KeySize]byte
-}
-
-func (e *Entry) SetKEK(kek []byte) {
+func (e *HeaderEntry) SetKEK(kek []byte) {
 	if len(kek) != len(e.KEK) {
 		mu.Panicf("bad KEK size: expected %d, got %d", len(e.KEK), len(kek))
 	}
 	copy(e.KEK[:], kek)
 }
 
-func (e *Entry) SetDEK(dek []byte) {
+func (e *HeaderEntry) SetDEK(dek []byte) {
 	if len(dek) != len(e.DEK) {
         mu.Panicf("bad DEK size: expected %d, got %d", len(e.DEK), len(dek))
 	}
 	copy(e.DEK[:], dek)
 }
 
-func (e *Entry) String() string {
+func (e *HeaderEntry) String() string {
     return fmt.Sprintf("{KEK: %x DEK: %x}", e.KEK, e.DEK)
 }
 
-func (e *Entry) Marshal() []byte {
+func (e *HeaderEntry) Marshal() []byte {
     b := new(bytes.Buffer)
     b.Write(e.KEK[:])
     b.Write(e.DEK[:])
     return b.Bytes()
 }
 
-func UnmarshalEntry(data []byte) (*Entry, error) {
-    if len(data) < EntrySize {
-        return nil, fmt.Errorf("failed to unmarshal header.Entry: expected %d bytes, got %d", EntrySize, len(data))
+func UnmarshalHeaderEntry(data []byte) (*HeaderEntry, error) {
+    if len(data) < HeaderEntrySize {
+        return nil, fmt.Errorf("failed to unmarshal HeaderEntry: expected %d bytes, got %d", HeaderEntrySize, len(data))
     }
 
-    e := &Entry{}
+    e := &HeaderEntry{}
     r := bytes.NewReader(data)
     _, err := r.Read(e.KEK[:])
     if err != nil {
@@ -75,7 +75,7 @@ type PlainHeader struct {
 
 type EncryptedHeader struct {
     Tag [aesx.TagSize]byte
-    Entries []Entry
+    Entries []HeaderEntry
 }
 
 type Header struct {
@@ -105,7 +105,7 @@ func (h *Header) String() string {
 // the returned header does not have any entries, and the caller is responsible
 // for invoking the [AddEntry] method.
 // TODO: should this return an error instead of panic on bad iv/tag lengths?
-func New(iv []byte, tag []byte) *Header {
+func NewHeader(iv []byte, tag []byte) *Header {
     h := &Header{}
 	if len(iv) != len(h.BaseIV) {
 		mu.Panicf("bad IV size: expected %d, got %d", len(h.BaseIV), len(iv))
@@ -122,8 +122,8 @@ func New(iv []byte, tag []byte) *Header {
 }
 
 // AddEntry addes a new key entry to the header.
-func (h *Header) AddEntry(e *Entry) {
-    h.Size += EntrySize
+func (h *Header) AddEntry(e *HeaderEntry) {
+    h.Size += HeaderEntrySize
     h.Entries = append(h.Entries, *e)
 }
 
@@ -148,14 +148,14 @@ func (h *Header) Marshal(kek []byte) ([]byte, error) {
 
     // encrypt it
     enc := ct.Bytes()
-    eidx := len(h.Tag) + EntrySize
+    eidx := len(h.Tag) + HeaderEntrySize
     numEntries := len(h.Entries)
 
     iv := aesx.NewIV(h.BaseIV[:])
     for i := 1; i < numEntries; i++ {
         curKEK := h.Entries[i].KEK
         aesx.CTREncrypt(enc[:eidx], curKEK[:], iv[:])
-        eidx += EntrySize
+        eidx += HeaderEntrySize
         iv.Inc()
     }
 
@@ -174,9 +174,9 @@ func (h *Header) Marshal(kek []byte) ([]byte, error) {
 
 // Unmarshal takes a marshalled version of the header and the current Key
 // Encryption Key (KEK) and deserializes and decrypts the header.
-func Unmarshal(data []byte, kek []byte) (*Header, error) {
+func UnmarshalHeader(data []byte, kek []byte) (*Header, error) {
     if len(kek) != aesx.KeySize {
-        return nil, fmt.Errorf("header.Unmarshal failed: expected KEK size of %d, but got %d", aesx.KeySize, kek)
+        return nil, fmt.Errorf("UnmarshalHeader failed: expected KEK size of %d, but got %d", aesx.KeySize, kek)
     }
 
     h := &Header{}
@@ -200,11 +200,11 @@ func Unmarshal(data []byte, kek []byte) (*Header, error) {
     }
 
     enc := data[int(r.Size())-r.Len():]
-    mod := (len(enc) - len(h.Tag)) % EntrySize
+    mod := (len(enc) - len(h.Tag)) % HeaderEntrySize
     if mod != 0 {
         return nil, fmt.Errorf("failed to unmarshal header: header has a partial entry")
     }
-    numEntries := (len(enc) - len(h.Tag)) / EntrySize
+    numEntries := (len(enc) - len(h.Tag)) / HeaderEntrySize
     if numEntries <= 0 {
         return nil, fmt.Errorf("failed to unmarshal header: header has 0 entries")
     }
@@ -217,8 +217,8 @@ func Unmarshal(data []byte, kek []byte) (*Header, error) {
     for eidx != len(h.Tag) {
         aesx.CTRDecrypt(enc[:eidx], curKEK, iv[:])
 
-        entryStart := eidx - EntrySize
-        entry, err := UnmarshalEntry(enc[entryStart:entryStart + 2*aesx.KeySize])
+        entryStart := eidx - HeaderEntrySize
+        entry, err := UnmarshalHeaderEntry(enc[entryStart:entryStart + 2*aesx.KeySize])
         if err != nil {
             return nil, err
         }
