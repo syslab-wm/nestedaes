@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+
+	"github.com/syslab-wm/mu"
 )
 
 const IVSize = 16
@@ -26,7 +28,7 @@ func GenRandomIV() *IV {
 	var iv IV
 	_, err := rand.Read(iv[:])
 	if err != nil {
-		panic(fmt.Sprintf("rand.Read failed: %v", err))
+		mu.Panicf("rand.Read failed: %v", err)
 	}
 	return &iv
 }
