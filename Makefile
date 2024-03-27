@@ -2,14 +2,14 @@ progs= nestedaes
 
 all: $(progs)
 
-$(progs):
+$(progs): vet
 	go build ./cmd/$@
+
+vet: fmt
+	go vet ./...
 
 fmt:
 	go fmt ./...
-
-vet:
-	go vet ./...
 
 # -count=1 forces tests to always run, even if no code has changed
 test:

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/syslab-wm/mu"
 	"github.com/syslab-wm/nestedaes"
 	"github.com/syslab-wm/nestedaes/internal/aesx"
-	"github.com/syslab-wm/mu"
 )
 
 const usage = `Usage: nestedaes [options] FILE
@@ -57,13 +57,13 @@ func printUsage() {
 }
 
 type Options struct {
-    // positional
-    inFile string
-    // optional
-    op  string
-    outFile string
-    inKEK   string
-    outKEK  string
+	// positional
+	inFile string
+	// optional
+	op      string
+	outFile string
+	inKEK   string
+	outKEK  string
 }
 
 func parseOptions() *Options {
@@ -75,108 +75,108 @@ func parseOptions() *Options {
 	flag.StringVar(&opts.inKEK, "inkek", "kek.key", "")
 	flag.StringVar(&opts.outKEK, "outkek", "kek.key", "")
 
-    flag.Parse()
+	flag.Parse()
 
 	if flag.NArg() != 1 {
 		mu.Fatalf("expected one positional argument but got %d", flag.NArg())
 	}
-    opts.inFile = flag.Arg(0)
+	opts.inFile = flag.Arg(0)
 
-    if opts.op != "encrypt" && opts.op != "reencrypt" && opts.op != "decrypt" {
-        mu.Fatalf("invalid value for -op; must be \"encrypt\", \"reencrypt\", or \"decrypt\"")
-    }
+	if opts.op != "encrypt" && opts.op != "reencrypt" && opts.op != "decrypt" {
+		mu.Fatalf("invalid value for -op; must be \"encrypt\", \"reencrypt\", or \"decrypt\"")
+	}
 
-    if opts.outFile == "" {
-        opts.outFile = opts.inFile
-    }
+	if opts.outFile == "" {
+		opts.outFile = opts.inFile
+	}
 
 	return &opts
 }
 
 func doEncrypt(inFile, outFile, outKEK string) {
-    plaintext, err := os.ReadFile(inFile)
-    if err != nil {
+	plaintext, err := os.ReadFile(inFile)
+	if err != nil {
 		mu.Fatalf("encrypt failed: can't read input file: %v", err)
-    }
+	}
 
 	kek := aesx.GenRandomKey()
-    iv := aesx.GenRandomIV()
-    blob, err := nestedaes.Encrypt(plaintext, kek, iv[:])
-    if err != nil {
+	iv := aesx.GenRandomIV()
+	blob, err := nestedaes.Encrypt(plaintext, kek, iv[:])
+	if err != nil {
 		mu.Fatalf("encrypt failed: %v", err)
-    }
+	}
 
-    err = os.WriteFile(outFile, blob, 0660)
-    if err != nil {
+	err = os.WriteFile(outFile, blob, 0660)
+	if err != nil {
 		mu.Fatalf("encrypt failed: can't write output file: %v", err)
-    }
+	}
 
-    err = os.WriteFile(outKEK, kek, 0660)
-    if err != nil {
+	err = os.WriteFile(outKEK, kek, 0660)
+	if err != nil {
 		mu.Fatalf("encrypt failed: can't write KEK file: %v", err)
-    }
+	}
 }
 
 func doReencrypt(inFile, outFile, inKEK, outKEK string) {
-    blob, err := os.ReadFile(inFile)
-    if err != nil {
+	blob, err := os.ReadFile(inFile)
+	if err != nil {
 		mu.Fatalf("can't read input file: %v", err)
-    }
+	}
 
-    kek, err := os.ReadFile(inKEK) 
-    if err != nil {
+	kek, err := os.ReadFile(inKEK)
+	if err != nil {
 		mu.Fatalf("can't read input KEK file: %v", err)
-    }
+	}
 
-    newBlob, newKEK, err := nestedaes.Reencrypt(blob, kek)
-    if err != nil {
-        mu.Fatalf("reencrypt failed: %v", err)
-    }
+	newBlob, newKEK, err := nestedaes.Reencrypt(blob, kek)
+	if err != nil {
+		mu.Fatalf("reencrypt failed: %v", err)
+	}
 
-    err = os.WriteFile(outFile, newBlob, 0660)
-    if err != nil {
+	err = os.WriteFile(outFile, newBlob, 0660)
+	if err != nil {
 		mu.Fatalf("can't write output file: %v", err)
-    }
+	}
 
-    err = os.WriteFile(outKEK, newKEK, 0660)
-    if err != nil {
+	err = os.WriteFile(outKEK, newKEK, 0660)
+	if err != nil {
 		mu.Fatalf("can't write KEK file: %v", err)
-    }
+	}
 }
 
 func doDecrypt(inFile, outFile, inKEK string) {
-    blob, err := os.ReadFile(inFile)
-    if err != nil {
+	blob, err := os.ReadFile(inFile)
+	if err != nil {
 		mu.Fatalf("can't read input file: %v", err)
-    }
+	}
 
-    kek, err := os.ReadFile(inKEK)
-    if err != nil {
+	kek, err := os.ReadFile(inKEK)
+	if err != nil {
 		mu.Fatalf("can't read input KEK file: %v", err)
-    }
+	}
 
-    plaintext, err := nestedaes.Decrypt(blob, kek)
-    if err != nil {
+	plaintext, err := nestedaes.Decrypt(blob, kek)
+	if err != nil {
 		mu.Fatalf("decrypt failed: %v", err)
-    }
+	}
 
-    err = os.WriteFile(outFile, plaintext, 0660)
-    if err != nil {
+	err = os.WriteFile(outFile, plaintext, 0660)
+	if err != nil {
 		mu.Fatalf("can't write output file: %v", err)
-    }
+	}
 }
 
 func main() {
 	opts := parseOptions()
 
-    switch opts.op {
-    case "encrypt":
-        doEncrypt(opts.inFile, opts.outFile, opts.outKEK)
-    case "reencrypt":
-        doReencrypt(opts.inFile, opts.outFile, opts.inKEK, opts.outKEK)
-    case "decrypt":
-        doDecrypt(opts.inFile, opts.outFile, opts.inKEK)
-    default:
-        mu.BUG("invalid value for op: %s", opts.op)
-    }
+	switch opts.op {
+	case "encrypt":
+		doEncrypt(opts.inFile, opts.outFile, opts.outKEK)
+	case "reencrypt":
+		doReencrypt(opts.inFile, opts.outFile, opts.inKEK, opts.outKEK)
+	case "decrypt":
+		doDecrypt(opts.inFile, opts.outFile, opts.inKEK)
+	default:
+		mu.BUG("invalid value for op: %s", opts.op)
+	}
 }
