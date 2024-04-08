@@ -38,11 +38,11 @@ func SplitHeaderPayload(blob []byte) ([]byte, []byte, error) {
 // The iv is the BaseIV.  The caller should randomly generate it; each
 // subsequent layer of encryption uses a different IV derived from the BaseIV.
 // TODO: does Encrypt modify the plaintext input?
-func Encrypt(plaintext, kek, iv []byte) ([]byte, error) {
+func Encrypt(plaintext, kek, iv []byte, additionalData []byte) ([]byte, error) {
 	// encrypt the plaintext
 	dek := aesx.GenRandomKey()
 	nonce := aesx.GenZeroNonce()
-	payload := aesx.GCMEncrypt(plaintext, dek, nonce, nil)
+	payload := aesx.GCMEncrypt(plaintext, dek, nonce, additionalData)
 
 	// separate the ciphertext from the AEAD tag
 	payload, tag, err := aesx.SplitCiphertextTag(payload)
@@ -106,7 +106,7 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
 
 // decrypted payload, and error
 // TODO: does Decrypt modify the blob and kek inputs?
-func Decrypt(blob, kek []byte) ([]byte, error) {
+func Decrypt(blob, kek []byte, additionalData []byte) ([]byte, error) {
 	hData, payload, err := SplitHeaderPayload(blob)
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func Decrypt(blob, kek []byte) ([]byte, error) {
 	dek := h.Entries[i].DEK
 	nonce := aesx.GenZeroNonce()
 	payload = append(payload, h.Tag[:]...)
-	plaintext, err := aesx.GCMDecrypt(payload, dek[:], nonce, nil)
+	plaintext, err := aesx.GCMDecrypt(payload, dek[:], nonce, additionalData)
 	if err != nil {
 		return nil, err
 	}
