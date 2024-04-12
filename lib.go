@@ -52,8 +52,7 @@ func Encrypt(plaintext, kek, iv []byte, additionalData []byte) ([]byte, error) {
 	}
 
 	// create the ciphertext header
-	h := NewHeader(iv, tag)
-	h.AddEntry(dek)
+	h := NewHeader(iv, tag, dek)
 
 	// concat header and payload
 	b := new(bytes.Buffer)

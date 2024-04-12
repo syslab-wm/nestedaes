@@ -48,11 +48,10 @@ func (h *Header) String() string {
 	return b.String()
 }
 
-// New creates a new [Header] and initializes the BaseIV and DataTag.  Note that
-// the returned header does not have any entries, and the caller is responsible
-// for invoking the [AddEntry] method.
+// New creates a new [Header] and initializes the BaseIV, DataTag, and first
+// DEK entry.
 // TODO: should this return an error instead of panic on bad iv/tag lengths?
-func NewHeader(iv []byte, dataTag []byte) *Header {
+func NewHeader(iv []byte, dataTag []byte, dek *[aesx.KeySize]byte) *Header {
 	h := &Header{}
 	if len(iv) != len(h.BaseIV) {
 		mu.Panicf("bad IV size: expected %d, got %d", len(h.BaseIV), len(iv))
@@ -64,9 +63,10 @@ func NewHeader(iv []byte, dataTag []byte) *Header {
 	}
 	copy(h.DataTag[:], dataTag)
 
-	h.Entries = make([][HeaderEntrySize]byte, 0)
+	h.Entries = make([][HeaderEntrySize]byte, 1)
+	copy(h.Entries[0][:], dek[:])
 
-	h.Size = uint32(4 + len(h.HeaderTag) + len(h.BaseIV) + len(h.DataTag)) // 4 for the Size field
+	h.Size = uint32(4 + len(h.HeaderTag) + len(h.BaseIV) + len(h.DataTag) + HeaderEntrySize) // 4 for the Size field
 	return h
 }
 
