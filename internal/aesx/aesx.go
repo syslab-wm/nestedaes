@@ -13,9 +13,9 @@ const KeySize = 32
 const NonceSize = 12
 const TagSize = 16
 
-func GenRandomKey() []byte {
-	key := make([]byte, KeySize)
-	_, err := rand.Read(key)
+func GenRandomKey() *[KeySize]byte {
+	key := new([KeySize]byte)
+	_, err := rand.Read(key[:])
 	if err != nil {
 		mu.Panicf("failed to generate an AES-256 key: %v", err)
 	}

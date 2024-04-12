@@ -35,14 +35,15 @@ func SplitHeaderPayload(blob []byte) ([]byte, []byte, error) {
 // Encrypt encrypts the plaintext and returns the Blob.  The function encrypts
 // the plaintext with a randomly generated Data Encryptoin Key (KEK), and uses
 // the input Key Encryption Key (KEK) to encrypt the DEK in the Blob's header.
-// The iv is the BaseIV.  The caller should randomly generate it; each
+// The IV is the BaseIV.  The caller should randomly generate it; each
 // subsequent layer of encryption uses a different IV derived from the BaseIV.
+// The same IV must never be passed to this function more than once.
 // TODO: does Encrypt modify the plaintext input?
 func Encrypt(plaintext, kek, iv []byte, additionalData []byte) ([]byte, error) {
 	// encrypt the plaintext
 	dek := aesx.GenRandomKey()
 	nonce := aesx.GenZeroNonce()
-	payload := aesx.GCMEncrypt(plaintext, dek, nonce, additionalData)
+	payload := aesx.GCMEncrypt(plaintext, dek[:], nonce, additionalData)
 
 	// separate the ciphertext from the AEAD tag
 	payload, tag, err := aesx.SplitCiphertextTag(payload)
@@ -52,9 +53,7 @@ func Encrypt(plaintext, kek, iv []byte, additionalData []byte) ([]byte, error) {
 
 	// create the ciphertext header
 	h := NewHeader(iv, tag)
-	entry := &HeaderEntry{}
-	entry.SetDEK(dek) // note that first entry only has a dek, and not a kek
-	h.AddEntry(entry)
+	h.AddEntry(dek)
 
 	// concat header and payload
 	b := new(bytes.Buffer)
@@ -85,23 +84,22 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
 	newKEK := aesx.GenRandomKey()
 	dek := aesx.GenRandomKey()
 
-	e := NewHeaderEntry(kek, dek)
-	h.AddEntry(e)
+	h.AddEntry(dek)
 
 	iv := aesx.NewIV(h.BaseIV[:])
 	iv.Add(len(h.Entries) - 1)
 
-	aesx.CTREncrypt(payload, dek, iv[:])
+	aesx.CTREncrypt(payload, dek[:], iv[:])
 
 	w := new(bytes.Buffer)
-	hData, err = h.Marshal(newKEK)
+	hData, err = h.Marshal(newKEK[:])
 	if err != nil {
 		return nil, nil, err
 	}
 	w.Write(hData)
 	w.Write(payload)
 
-	return w.Bytes(), newKEK, nil
+	return w.Bytes(), newKEK[:], nil
 }
 
 // decrypted payload, and error
@@ -121,15 +119,15 @@ func Decrypt(blob, kek []byte, additionalData []byte) ([]byte, error) {
 	iv.Add(len(h.Entries) - 1) // fast-forward to largest IV
 	i := len(h.Entries) - 1
 	for i > 0 {
-		dek := h.Entries[i].DEK
+		dek := h.Entries[i]
 		aesx.CTRDecrypt(payload, dek[:], iv[:])
 		iv.Dec()
 		i--
 	}
 
-	dek := h.Entries[i].DEK
+	dek := h.Entries[i]
 	nonce := aesx.GenZeroNonce()
-	payload = append(payload, h.Tag[:]...)
+	payload = append(payload, h.DataTag[:]...)
 	plaintext, err := aesx.GCMDecrypt(payload, dek[:], nonce, additionalData)
 	if err != nil {
 		return nil, err
