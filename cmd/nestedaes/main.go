@@ -101,7 +101,7 @@ func doEncrypt(inFile, outFile, outKEK string) {
 
 	kek := aesx.GenRandomKey()
 	iv := aesx.GenRandomIV()
-	blob, err := nestedaes.Encrypt(plaintext, kek, iv[:])
+	blob, err := nestedaes.Encrypt(plaintext, kek[:], iv[:], nil)
 	if err != nil {
 		mu.Fatalf("encrypt failed: %v", err)
 	}
@@ -111,7 +111,7 @@ func doEncrypt(inFile, outFile, outKEK string) {
 		mu.Fatalf("encrypt failed: can't write output file: %v", err)
 	}
 
-	err = os.WriteFile(outKEK, kek, 0660)
+	err = os.WriteFile(outKEK, kek[:], 0660)
 	if err != nil {
 		mu.Fatalf("encrypt failed: can't write KEK file: %v", err)
 	}
@@ -155,7 +155,7 @@ func doDecrypt(inFile, outFile, inKEK string) {
 		mu.Fatalf("can't read input KEK file: %v", err)
 	}
 
-	plaintext, err := nestedaes.Decrypt(blob, kek)
+	plaintext, err := nestedaes.Decrypt(blob, kek, nil)
 	if err != nil {
 		mu.Fatalf("decrypt failed: %v", err)
 	}
