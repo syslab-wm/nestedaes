@@ -18,6 +18,8 @@ import (
 	"github.com/syslab-wm/nestedaes/internal/aesx"
 )
 
+const KeySize = aesx.KeySize
+
 // SplitHeaderPayload takes a slice of the Blob of returns
 // it's two components: the Header bytes and the Payload bytes.
 func SplitHeaderPayload(blob []byte) ([]byte, []byte, error) {
