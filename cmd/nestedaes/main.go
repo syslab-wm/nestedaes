@@ -138,7 +138,7 @@ func doReencrypt(inFile, outFile, inKEK, outKEK string) {
 		mu.Fatalf("can't write output file: %v", err)
 	}
 
-	err = os.WriteFile(outKEK, newKEK, 0660)
+	err = os.WriteFile(outKEK, newKEK[:], 0660)
 	if err != nil {
 		mu.Fatalf("can't write KEK file: %v", err)
 	}

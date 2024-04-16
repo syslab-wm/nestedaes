@@ -12,12 +12,12 @@ func TestEncryptOnce(t *testing.T) {
 
 	kek := aesx.GenRandomKey()
 	iv := aesx.GenRandomIV()
-	blob, err := Encrypt(plain, kek, iv[:])
+	blob, err := Encrypt(plain, kek[:], iv[:], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := Decrypt(blob, kek)
+	got, err := Decrypt(blob, kek[:], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,17 +32,17 @@ func TestReencryptOnce(t *testing.T) {
 
 	kek := aesx.GenRandomKey()
 	iv := aesx.GenRandomIV()
-	blob, err := Encrypt(plain, kek, iv[:])
+	blob, err := Encrypt(plain, kek[:], iv[:], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	blob, kek, err = Reencrypt(blob, kek)
+	blob, kek, err = Reencrypt(blob, kek[:])
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := Decrypt(blob, kek)
+	got, err := Decrypt(blob, kek[:], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,19 +57,19 @@ func TestReencryptMany(t *testing.T) {
 
 	kek := aesx.GenRandomKey()
 	iv := aesx.GenRandomIV()
-	blob, err := Encrypt(plain, kek, iv[:])
+	blob, err := Encrypt(plain, kek[:], iv[:], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for i := 0; i < 100; i++ {
-		blob, kek, err = Reencrypt(blob, kek)
+		blob, kek, err = Reencrypt(blob, kek[:])
 		if err != nil {
 			t.Fatalf("reencrypt #%d failed: %v", i, err)
 		}
 	}
 
-	got, err := Decrypt(blob, kek)
+	got, err := Decrypt(blob, kek[:], nil)
 	if err != nil {
 		t.Fatal(err)
 	}

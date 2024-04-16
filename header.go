@@ -15,7 +15,6 @@ const HeaderEntrySize = aesx.KeySize;
 
 type PlainHeader struct {
 	Size      uint32
-	HeaderTag [aesx.TagSize]byte
 	BaseIV    [aesx.IVSize]byte
 }
 
@@ -27,6 +26,7 @@ type EncryptedHeader struct {
 type Header struct {
 	PlainHeader
 	EncryptedHeader
+	//HeaderTag [aesx.TagSize]byte (exists only in encrypted header)
 }
 
 // String satisfies the [fmt.Stringer] interface.
@@ -35,7 +35,6 @@ func (h *Header) String() string {
 
 	fmt.Fprintf(&b, "{\n")
 	fmt.Fprintf(&b, "\tsize: %d,\n", h.Size)
-	fmt.Fprintf(&b, "\tHeaderTag: %x,\n", h.HeaderTag)
 	fmt.Fprintf(&b, "\tBaseIV: %x,\n", h.BaseIV)
 	fmt.Fprintf(&b, "\tDataTag: %x,\n", h.DataTag)
 	fmt.Fprintf(&b, "\tEntries (%d): [\n", len(h.Entries))
@@ -43,6 +42,7 @@ func (h *Header) String() string {
 		fmt.Fprintf(&b, "\t\t%d: %v,\n", i, h.Entries[i])
 	}
 	fmt.Fprintf(&b, "\t]\n")
+	//fmt.Fprintf(&b, "\tHeaderTag: %x,\n", h.HeaderTag)
 	fmt.Fprintf(&b, "}")
 
 	return b.String()
@@ -66,7 +66,7 @@ func NewHeader(iv []byte, dataTag []byte, dek *[aesx.KeySize]byte) *Header {
 	h.Entries = make([][HeaderEntrySize]byte, 1)
 	copy(h.Entries[0][:], dek[:])
 
-	h.Size = uint32(4 + len(h.HeaderTag) + len(h.BaseIV) + len(h.DataTag) + HeaderEntrySize) // 4 for the Size field
+	h.Size = uint32(4 + len(h.BaseIV) + len(h.DataTag) + HeaderEntrySize + aesx.TagSize) // 4 for the Size field, tagsize for header tag
 	return h
 }
 
@@ -101,15 +101,12 @@ func (h *Header) Marshal(kek []byte) ([]byte, error) {
 	iv.Add(numEntries - 1)
 	// encrypt with current KEK
 	// TODO: should size or anything else be verified as additional data?
-	gcmRet := aesx.GCMEncrypt(ct.Bytes(), kek, iv[:], nil)
-	enc, tag, _ := aesx.SplitCiphertextTag(gcmRet)
-	copy(h.HeaderTag[:], tag)
+	enc := aesx.GCMEncrypt(ct.Bytes(), kek, iv.ToGCMNonce(), nil)
 
 	// write the plain portion of the header and concatenate the encryption
 	// portion
 	b := new(bytes.Buffer)
 	binary.Write(b, binary.BigEndian, h.Size)
-	b.Write(h.HeaderTag[:])
 	b.Write(h.BaseIV[:])
 	b.Write(enc)
 
@@ -135,15 +132,15 @@ func UnmarshalHeader(data []byte, kek []byte) (*Header, error) {
 		return nil, fmt.Errorf("failed to unmarshal header: header size field is %d but marshalled data is %d bytes", h.Size, len(data))
 	}
 
-	n, err := r.Read(h.HeaderTag[:])
+	/*n, err := r.Read(h.HeaderTag[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal header: can't read HeaderTag: %w", err)
 	}
 	if n != len(h.HeaderTag) {
 		return nil, fmt.Errorf("failed to unmarshal header: can't read HeaderTag")
-	}
+	}*/
 
-	n, err = r.Read(h.BaseIV[:])
+	n, err := r.Read(h.BaseIV[:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal header: can't read BaseIV: %w", err)
 	}
@@ -152,19 +149,18 @@ func UnmarshalHeader(data []byte, kek []byte) (*Header, error) {
 	}
 
 	enc := data[int(r.Size())-r.Len():]
-	mod := (len(enc) - len(h.DataTag)) % HeaderEntrySize
+	mod := (len(enc) - len(h.DataTag) - aesx.TagSize) % HeaderEntrySize
 	if mod != 0 {
 		return nil, fmt.Errorf("failed to unmarshal header: header has a partial entry")
 	}
-	numEntries := (len(enc) - len(h.DataTag)) / HeaderEntrySize
+	numEntries := (len(enc) - len(h.DataTag) - aesx.TagSize) / HeaderEntrySize
 	if numEntries <= 0 {
 		return nil, fmt.Errorf("failed to unmarshal header: header has 0 entries")
 	}
 
 	iv := aesx.NewIV(h.BaseIV[:])
 	iv.Add(numEntries - 1)
-	gcmArg := append(enc, h.HeaderTag[:]...)
-	dec, err := aesx.GCMDecrypt(gcmArg, kek, iv[:], nil)
+	dec, err := aesx.GCMDecrypt(enc, kek, iv.ToGCMNonce(), nil)
 	h.Entries = make([][HeaderEntrySize]byte, numEntries)
 
 	for i := 0; i < numEntries; i++ {

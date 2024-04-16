@@ -52,6 +52,10 @@ func (iv *IV) IsZero() bool {
 	return true
 }
 
+func (iv *IV) ToGCMNonce() []byte {
+	return iv[(IVSize - NonceSize):]
+}
+
 func (iv *IV) ToBigInt() *big.Int {
 	z := new(big.Int)
 	z.SetBytes(iv[:])

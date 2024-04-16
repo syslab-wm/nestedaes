@@ -71,7 +71,7 @@ func Encrypt(plaintext, kek, iv []byte, additionalData []byte) ([]byte, error) {
 
 // output: new blob, new kek, error
 // TODO: does Rencrypt modify the blob and kek inputs?
-func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
+func Reencrypt(blob, kek []byte) ([]byte, *[KeySize]byte, error) {
 	hData, payload, err := SplitHeaderPayload(blob)
 	if err != nil {
 		return nil, nil, err
@@ -100,7 +100,7 @@ func Reencrypt(blob, kek []byte) ([]byte, []byte, error) {
 	w.Write(hData)
 	w.Write(payload)
 
-	return w.Bytes(), newKEK[:], nil
+	return w.Bytes(), newKEK, nil
 }
 
 // decrypted payload, and error
