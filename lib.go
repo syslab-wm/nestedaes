@@ -27,7 +27,7 @@ func SplitHeaderPayload(blob []byte) ([]byte, []byte, error) {
 	r := bytes.NewReader(blob)
 	binary.Read(r, binary.BigEndian, &hSize)
 
-	if hSize >= uint32(len(blob)) {
+	if hSize > uint32(len(blob)) {
 		return nil, nil, fmt.Errorf("header size (%d bytes) is >= blob size (%d bytes)", hSize, len(blob))
 	}
 
